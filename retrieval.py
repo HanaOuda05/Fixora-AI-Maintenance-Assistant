@@ -608,9 +608,37 @@ def test_auto_error_detection():
 
 if __name__ == "__main__":
 
-    test_auto_error_detection()
+    query = "There is no CO2 readings."
 
-    # create_vector_database()
-    # test_semantic_search()
-    # test_exact_error_search()
+    results = semantic_search(
+        query=query,
+        device_id="sc6002xl",
+        top_k=10,
+    )
+
+    print("=" * 70)
+    print("SEMANTIC SEARCH DEBUG")
+    print("=" * 70)
+
+    for i in range(len(results["documents"][0])):
+
+        print()
+        print(f"RESULT {i + 1}")
+        print("-" * 70)
+
+        print(
+            "Distance:",
+            results["distances"][0][i]
+        )
+
+        print(
+            "Metadata:",
+            results["metadatas"][0][i]
+        )
+
+        print()
+
+        print(
+            results["documents"][0][i]
+        )
 

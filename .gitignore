@@ -1,24 +1,11 @@
-# Secrets
 .env
-
-# Python environment
 .venv/
 venv/
-
-# Python cache
 __pycache__/
 *.pyc
-
-# Generated vector database
 vector_db/
-
-# Generated preprocessing output
-data_processed/
-
-# Service manuals
 data/manuals/*.pdf
-
-# IDE / OS
+answers/
 .vscode/
 .DS_Store
 Thumbs.db

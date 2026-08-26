@@ -39,97 +39,40 @@ def format_exact_results(results):
 
 
 def format_semantic_results(results):
-    """
-    Convert semantic search results
-    into clean RAG context.
-    """
-
-    if not results["documents"]:
-        return ""
 
     documents = results["documents"][0]
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
 
+    if not documents:
+        return "No relevant manual evidence found."
+
     context_parts = []
 
-    for index, (
-        document,
-        metadata,
-        distance,
-    ) in enumerate(
-        zip(
-            documents,
-            metadatas,
-            distances,
-        ),
-        start=1,
-    ):
+    max_results = min(3, len(documents))
 
-        source = (
-            f"SOURCE {index}\n"
-            f"Device: {metadata['device']}\n"
-            f"Page: {metadata['page']}\n"
-            f"Section: {metadata['section']}\n"
-            f"Distance: {distance:.4f}\n"
-            f"Manual evidence:\n"
-            f"{document}"
+    for i in range(max_results):
+
+        document = documents[i]
+        metadata = metadatas[i]
+        distance = distances[i]
+
+        context_parts.append(
+            f"""
+SOURCE {i + 1}
+
+Device: {metadata.get("device")}
+Page: {metadata.get("page")}
+Section: {metadata.get("section")}
+Chunk type: {metadata.get("chunk_type")}
+Distance: {distance:.4f}
+
+Manual evidence:
+{document}
+""".strip()
         )
-
-        context_parts.append(source)
 
     return "\n\n".join(context_parts)
-
-
-def build_rag_context(
-    query,
-    device_id,
-    top_k=5,
-):
-
-    retrieval_output = retrieve(
-        query=query,
-        device_id=device_id,
-        top_k=top_k,
-    )
-
-    retrieval_type = (
-        retrieval_output[
-            "retrieval_type"
-        ]
-    )
-
-    results = retrieval_output[
-        "results"
-    ]
-
-    if retrieval_type == "exact_error":
-
-        context = format_exact_results(
-            results
-        )
-
-    else:
-
-        context = format_semantic_results(
-            results
-        )
-
-    return {
-        "retrieval_type":
-            retrieval_type,
-
-        "detected_error_code":
-            retrieval_output.get(
-                "detected_error_code"
-            ),
-
-        "context":
-            context,
-
-        "raw_results":
-            results,
-    }
 
 def test_rag_context():
 
@@ -157,50 +100,65 @@ def test_rag_context():
         result["context"]
     )
 
+def build_rag_context(
+    query,
+    device_id,
+    top_k=5,
+):
+
+    retrieval_data = retrieve(
+        query=query,
+        device_id=device_id,
+        top_k=top_k,
+    )
+
+    retrieval_type = retrieval_data["retrieval_type"]
+
+    if retrieval_type == "exact_error":
+
+        context = format_exact_results(
+            retrieval_data["results"]
+        )
+
+    else:
+
+        context = format_semantic_results(
+            retrieval_data["results"]
+        )
+
+    return {
+        "retrieval_type": retrieval_type,
+        "detected_error_code": retrieval_data[
+            "detected_error_code"
+        ],
+        "context": context,
+        "raw_results": retrieval_data["results"],
+    }
 def answer_query(
     query,
     device_id,
     top_k=5,
 ):
 
-    rag_result = build_rag_context(
+    rag_data = build_rag_context(
         query=query,
         device_id=device_id,
         top_k=top_k,
     )
 
-    context = rag_result["context"]
-
-    if not context:
-        return {
-            "answer":
-                "No relevant information was found "
-                "in the selected service manual.",
-
-            "retrieval_type":
-                rag_result["retrieval_type"],
-
-            "context":
-                "",
-        }
-
     answer = generate_answer(
         query=query,
-        context=context,
+        context=rag_data["context"],
     )
 
     return {
-        "answer":
-            answer,
-
-        "retrieval_type":
-            rag_result["retrieval_type"],
-
-        "context":
-            context,
+        "display_text": answer["display_text"],
+        "speech_text": answer["speech_text"],
+        "retrieval_type": rag_data["retrieval_type"],
+        "detected_error_code": rag_data[
+            "detected_error_code"
+        ],
     }
-
-
 def test_full_rag():
 
     query = "What does error 37 mean?"
