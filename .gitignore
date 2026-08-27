@@ -4,8 +4,8 @@ venv/
 __pycache__/
 *.pyc
 vector_db/
-data/manuals/*.pdf
-answers/
 .vscode/
 .DS_Store
 Thumbs.db
+answers/
+*.wav

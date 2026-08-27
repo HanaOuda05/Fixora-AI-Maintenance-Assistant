@@ -137,7 +137,7 @@ def test_voice_pipeline():
                 # IMPORTANT:
                 # False = test STT + RAG only
                 # True = also generate TTS audio
-                generate_audio=False,
+                generate_audio= True,
             )
 
             print()

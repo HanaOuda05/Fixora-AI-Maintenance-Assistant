@@ -1,6 +1,7 @@
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+TTS_MODEL = "facebook/mms-tts-eng"
 
 MANUALS_DIR = BASE_DIR / "data" / "manuals"
 PROCESSED_DIR = BASE_DIR / "data_processed"
