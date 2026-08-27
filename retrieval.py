@@ -2,15 +2,7 @@ import json
 import re
 
 import chromadb
-
 from sentence_transformers import SentenceTransformer
-
-
-
-model = SentenceTransformer(
-    EMBEDDING_MODEL_NAME
-)
-
 
 from config import (
     PROCESSED_DIR,
@@ -18,12 +10,182 @@ from config import (
 )
 
 
-EMBEDDING_MODEL_NAME = (
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 COLLECTION_NAME = "maintai_manuals"
 
+
+# ============================================================
+# LOAD EMBEDDING MODEL
+# ============================================================
+
+model = SentenceTransformer(
+    EMBEDDING_MODEL_NAME
+)
+
+def get_or_create_collection():
+
+    client = chromadb.PersistentClient(
+        path=str(VECTOR_DB_DIR)
+    )
+
+    try:
+        collection = client.get_collection(
+            name=COLLECTION_NAME
+        )
+
+        print(
+            f"Loaded existing Chroma collection: "
+            f"{COLLECTION_NAME}"
+        )
+
+        return collection
+
+    except Exception:
+        print(
+            f"Collection '{COLLECTION_NAME}' not found. "
+            "Creating it from processed chunks..."
+        )
+
+    chunks_path = (
+        PROCESSED_DIR
+        / "maintai_chunks.json"
+    )
+
+    if not chunks_path.exists():
+        raise FileNotFoundError(
+            f"Processed chunks file not found: "
+            f"{chunks_path}"
+        )
+
+    with open(
+        chunks_path,
+        "r",
+        encoding="utf-8",
+    ) as file:
+        chunks = json.load(file)
+
+    if not chunks:
+        raise ValueError(
+            "Processed chunks JSON is empty."
+        )
+
+    ids = []
+    documents = []
+    metadatas = []
+
+    for index, chunk in enumerate(
+        chunks,
+        start=1,
+    ):
+
+        chunk_id = chunk.get(
+            "id",
+            f"chunk_{index:04d}",
+        )
+
+        text = chunk.get(
+            "text",
+            "",
+        )
+
+        if not text.strip():
+            continue
+
+        metadata = {
+            "device_id": chunk.get(
+                "device_id",
+                "",
+            ),
+
+            "device": chunk.get(
+                "device",
+                "",
+            ),
+
+            "manufacturer": chunk.get(
+                "manufacturer",
+                "",
+            ),
+
+            "page": chunk.get(
+                "page",
+                0,
+            ),
+
+            "section": chunk.get(
+                "section",
+                "",
+            ),
+
+            "chunk_type": chunk.get(
+                "chunk_type",
+                "",
+            ),
+
+            "error_code": (
+                chunk.get(
+                    "error_code"
+                )
+                or ""
+            ),
+        }
+
+        ids.append(
+            str(chunk_id)
+        )
+
+        documents.append(
+            text
+        )
+
+        metadatas.append(
+            metadata
+        )
+
+    if not documents:
+        raise ValueError(
+            "No valid chunks were found."
+        )
+
+    print(
+        f"Generating embeddings for "
+        f"{len(documents)} chunks..."
+    )
+
+    embeddings = model.encode(
+        documents,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
+
+    embeddings = [
+        embedding.tolist()
+        for embedding in embeddings
+    ]
+
+    collection = client.create_collection(
+        name=COLLECTION_NAME
+    )
+
+    collection.add(
+        ids=ids,
+        documents=documents,
+        metadatas=metadatas,
+        embeddings=embeddings,
+    )
+
+    print(
+        f"Created collection "
+        f"'{COLLECTION_NAME}' "
+        f"with {len(ids)} chunks."
+    )
+
+    return collection
 
 def load_chunks():
 
@@ -647,204 +809,3 @@ model = SentenceTransformer(
 )
 
 
-def get_or_create_collection():
-
-    client = chromadb.PersistentClient(
-        path=str(VECTOR_DB_DIR)
-    )
-
-    # --------------------------------------------------------
-    # 1. Try to load the existing collection
-    # --------------------------------------------------------
-
-    try:
-
-        collection = client.get_collection(
-            name=COLLECTION_NAME
-        )
-
-        print(
-            f"Loaded existing Chroma collection: "
-            f"{COLLECTION_NAME}"
-        )
-
-        return collection
-
-    except Exception:
-
-        print(
-            f"Collection '{COLLECTION_NAME}' not found."
-        )
-
-        print(
-            "Creating collection from processed chunks..."
-        )
-
-    # --------------------------------------------------------
-    # 2. Load processed chunks JSON
-    # --------------------------------------------------------
-
-    chunks_path = (
-        PROCESSED_DIR
-        / "maintai_chunks.json"
-    )
-
-    if not chunks_path.exists():
-
-        raise FileNotFoundError(
-            f"Processed chunks file not found: "
-            f"{chunks_path}"
-        )
-
-    with open(
-        chunks_path,
-        "r",
-        encoding="utf-8",
-    ) as file:
-
-        chunks = json.load(file)
-
-    if not chunks:
-
-        raise ValueError(
-            "Processed chunks JSON is empty."
-        )
-
-    # --------------------------------------------------------
-    # 3. Prepare Chroma data
-    # --------------------------------------------------------
-
-    ids = []
-    documents = []
-    metadatas = []
-
-    for index, chunk in enumerate(
-        chunks,
-        start=1,
-    ):
-
-        # Use existing ID if available.
-        # Otherwise create one automatically.
-        chunk_id = chunk.get(
-            "id",
-            f"chunk_{index:04d}",
-        )
-
-        text = chunk.get(
-            "text",
-            "",
-        )
-
-        if not text.strip():
-
-            print(
-                f"Skipping empty chunk: "
-                f"{chunk_id}"
-            )
-
-            continue
-
-        metadata = {
-            "device_id": chunk.get(
-                "device_id",
-                "",
-            ),
-
-            "device": chunk.get(
-                "device",
-                "",
-            ),
-
-            "manufacturer": chunk.get(
-                "manufacturer",
-                "",
-            ),
-
-            "page": chunk.get(
-                "page",
-                0,
-            ),
-
-            "section": chunk.get(
-                "section",
-                "",
-            ),
-
-            "chunk_type": chunk.get(
-                "chunk_type",
-                "",
-            ),
-
-            "error_code": (
-                chunk.get(
-                    "error_code"
-                )
-                or ""
-            ),
-        }
-
-        ids.append(
-            str(chunk_id)
-        )
-
-        documents.append(
-            text
-        )
-
-        metadatas.append(
-            metadata
-        )
-
-    if not documents:
-
-        raise ValueError(
-            "No valid chunks were found "
-            "for the vector database."
-        )
-
-    # --------------------------------------------------------
-    # 4. Create embeddings
-    # --------------------------------------------------------
-
-    print(
-        f"Generating embeddings for "
-        f"{len(documents)} chunks..."
-    )
-
-    embeddings = model.encode(
-        documents,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-
-    embeddings = [
-        embedding.tolist()
-        for embedding in embeddings
-    ]
-
-    # --------------------------------------------------------
-    # 5. Create Chroma collection
-    # --------------------------------------------------------
-
-    collection = client.create_collection(
-        name=COLLECTION_NAME
-    )
-
-    # --------------------------------------------------------
-    # 6. Add chunks to Chroma
-    # --------------------------------------------------------
-
-    collection.add(
-        ids=ids,
-        documents=documents,
-        metadatas=metadatas,
-        embeddings=embeddings,
-    )
-
-    print(
-        f"Created Chroma collection "
-        f"'{COLLECTION_NAME}' "
-        f"with {len(ids)} chunks."
-    )
-
-    return collection
