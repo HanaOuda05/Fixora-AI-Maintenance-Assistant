@@ -165,17 +165,7 @@ def semantic_search(
     top_k=5,
 ):
 
-    model = SentenceTransformer(
-        EMBEDDING_MODEL_NAME
-    )
-
-    client = chromadb.PersistentClient(
-        path=str(VECTOR_DB_DIR)
-    )
-
-    collection = client.get_collection(
-        name=COLLECTION_NAME
-    )
+    collection = get_or_create_collection()
 
     query_embedding = model.encode(
         query,
@@ -192,7 +182,7 @@ def semantic_search(
         },
     )
 
-    return results 
+    return results
 
 
 def test_semantic_search():
@@ -268,15 +258,9 @@ def exact_error_search(
     device_id,
 ):
 
-    client = chromadb.PersistentClient(
-        path=str(VECTOR_DB_DIR)
-    )
+    collection = get_or_create_collection()
 
-    collection = client.get_collection(
-        name=COLLECTION_NAME
-    )
-
-    results = collection.get(
+    return collection.get(
         where={
             "$and": [
                 {
@@ -290,8 +274,6 @@ def exact_error_search(
             ]
         }
     )
-
-    return results
 
 
 def test_exact_error_search():
@@ -642,3 +624,123 @@ if __name__ == "__main__":
             results["documents"][0][i]
         )
 
+import json
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+from config import PROCESSED_DIR, VECTOR_DB_DIR
+
+
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+COLLECTION_NAME = "maintai_manuals"
+
+
+model = SentenceTransformer(
+    EMBEDDING_MODEL_NAME
+)
+
+
+def get_or_create_collection():
+
+    client = chromadb.PersistentClient(
+        path=str(VECTOR_DB_DIR)
+    )
+
+    try:
+
+        collection = client.get_collection(
+            name=COLLECTION_NAME
+        )
+
+        return collection
+
+    except Exception:
+
+        print(
+            "Vector collection not found. "
+            "Creating it from processed chunks..."
+        )
+
+        chunks_path = (
+            PROCESSED_DIR
+            / "maintai_chunks.json"
+        )
+
+        with open(
+            chunks_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+
+            chunks = json.load(file)
+
+        documents = []
+        ids = []
+        metadatas = []
+
+        for chunk in chunks:
+
+            ids.append(
+                chunk["id"]
+            )
+
+            documents.append(
+                chunk["text"]
+            )
+
+            metadatas.append(
+                {
+                    "device_id": chunk[
+                        "device_id"
+                    ],
+                    "device": chunk[
+                        "device"
+                    ],
+                    "manufacturer": chunk[
+                        "manufacturer"
+                    ],
+                    "page": chunk[
+                        "page"
+                    ],
+                    "section": chunk[
+                        "section"
+                    ],
+                    "chunk_type": chunk[
+                        "chunk_type"
+                    ],
+                    "error_code": (
+                        chunk.get(
+                            "error_code"
+                        )
+                        or ""
+                    ),
+                }
+            )
+
+        embeddings = model.encode(
+            documents,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+
+        collection = client.create_collection(
+            name=COLLECTION_NAME
+        )
+
+        collection.add(
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas,
+            embeddings=[
+                embedding.tolist()
+                for embedding
+                in embeddings
+            ],
+        )
+
+        print(
+            f"Created collection with "
+            f"{len(ids)} chunks."
+        )
+
+        return collection
